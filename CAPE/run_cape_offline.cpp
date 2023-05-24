@@ -74,6 +74,27 @@ void projectPointCloud(cv::Mat & X, cv::Mat & Y, cv::Mat & Z, cv::Mat & U, cv::M
     }
 }
 
+
+// void pj2(const Eigen::MatrixXf & depthImage, Eigen::MatrixXf & cloud_array){
+//     int height = 480;
+//     int width = 640;
+//     float z, u, v;
+//     int id;
+//     for(int r=0; r< height; r++){
+//         for(int c=0; c< width; c++){
+//             z = depthImage(v, u);
+//             u = u_ptr[c];
+//             v = v_ptr[c];
+//             if(z>0 && u>0 && v>0 && u<width && v<height){
+//                 id = floor(v)*width + u;
+//                 cloud_array(id,0) = sx[c];
+//                 cloud_array(id,1) = sy[c];
+//                 cloud_array(id,2) = z;
+//             }
+//         }
+//     }
+// }
+
 void organizePointCloudByCell(Eigen::MatrixXf & cloud_in, Eigen::MatrixXf & cloud_out, cv::Mat & cell_map){
 
     int width = cell_map.cols;
@@ -104,7 +125,7 @@ int main(int argc, char ** argv){
         sequence = argv[2];
     }else{
         PATCH_SIZE = 20;
-        sequence = "cy_0";
+        sequence = "seq_example";
     }
 
     stringstream string_buff;
@@ -302,7 +323,7 @@ int main(int argc, char ** argv){
             }
         }
         cv::imshow("Seg", seg_rz);
-        cv::waitKey(1);
+        cv::waitKey(0);
         i++;
     }
     return 0;

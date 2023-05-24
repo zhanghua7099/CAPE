@@ -27,6 +27,9 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 add_executable(cape_offline run_cape_offline.cpp)
 target_link_libraries(cape_offline ${PROJECT_NAME})
 
+add_executable(pipe_seg pipe_seg.cpp)
+target_link_libraries(pipe_seg ${PROJECT_NAME})
+
 
 ################################
 ## INSTALLATION
