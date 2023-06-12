@@ -95,6 +95,7 @@ void projectPointCloud(cv::Mat & X, cv::Mat & Y, cv::Mat & Z, cv::Mat & U, cv::M
 //     }
 // }
 
+
 void organizePointCloudByCell(Eigen::MatrixXf & cloud_in, Eigen::MatrixXf & cloud_out, cv::Mat & cell_map){
 
     int width = cell_map.cols;
@@ -324,6 +325,7 @@ int main(int argc, char ** argv){
         }
         cv::imshow("Seg", seg_rz);
         cv::waitKey(0);
+        cv::imwrite("detect.png", seg_rz);
         i++;
     }
     return 0;

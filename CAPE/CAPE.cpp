@@ -44,7 +44,8 @@ CAPE::CAPE(int depth_height, int depth_width, int cell_width, int cell_height, b
 	mask_cross_kernel.at<uchar>(0,2) = 0; mask_cross_kernel.at<uchar>(2,0) = 0;
 }
 
-void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & nr_cylinders_final,  cv::Mat & seg_out, vector<PlaneSeg> & plane_segments_final, vector<CylinderSeg> & cylinder_segments_final){
+void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & nr_cylinders_final,  cv::Mat & seg_out, vector<PlaneSeg> & plane_segments_final, vector<CylinderSeg> & cylinder_segments_final)
+{
 
 	int nr_horizontal_cells = depth_width/cell_width;
 	int nr_vertical_cells = depth_height/cell_height;
@@ -439,7 +440,7 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
             cy.radii.push_back(cylinder_segments[reg_id].radii[sub_reg_id]);
             cy.centers.push_back(cylinder_segments[reg_id].centers[sub_reg_id]);
             copy(cylinder_segments[reg_id].axis, cylinder_segments[reg_id].axis+3, cy.axis);
-            cout<<cylinder_segments[reg_id].axis[2]<<endl;
+            // cout<<"Cylinder: "<<cylinder_segments[reg_id].axis[2]<<endl;
             cylinder_segments_final.push_back(cy);
         }
     }

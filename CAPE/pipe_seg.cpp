@@ -12,6 +12,8 @@
 #include "CAPE.h"
 #include <opencv2/core/eigen.hpp>
 #include <fstream>
+#include <sstream>
+#include <iomanip>
 
 using namespace std;
 
@@ -22,44 +24,60 @@ bool cylinder_detection= true;
 CAPE * plane_detector;
 std::vector<cv::Vec3b> color_code;
 
+// set rgb image intrinsic
+float fx_rgb = 604.3303833007812;
+float fy_rgb = 604.4821166992188;
+float cx_rgb = 638.0137329101562;
+float cy_rgb = 363.1947937011719;
 
-void projectPointCloud(cv::Mat & X, cv::Mat & Y, cv::Mat & Z, cv::Mat & U, cv::Mat & V, float fx_rgb, float fy_rgb, float cx_rgb, float cy_rgb, double z_min, Eigen::MatrixXf & cloud_array){
+// set the image width and height
+int width = 1280;
+int height = 720;
 
+// set the patch size
+int PATCH_SIZE = 20;
+
+
+void projectPointCloud(const cv::Mat & X, const cv::Mat & Y, const cv::Mat & Z, const double &z_min, Eigen::MatrixXf & cloud_array){
+    // X: x coordinate of pcd
+    // Y: y coordinate of pcd
+    // Z: z coordinate of pcd
+    // organize as a image, each pixel has a value
     int width = X.cols;
     int height = X.rows;
-
+    
+    cv::Mat U, V;
     // Project to image coordinates
-    cv::divide(X,Z,U,1);
-    cv::divide(Y,Z,V,1);
-    U = U*fx_rgb + cx_rgb;
-    V = V*fy_rgb + cy_rgb;
+    cv::divide(X,Z,U,1);    // U=X*1/Z
+    cv::divide(Y,Z,V,1);    // V=Y*1/Z (Performs per-element division of two arrays or a scalar by an array.)
+
+    // project to image plane according to the point
+    U = U * fx_rgb + cx_rgb;
+    V = V * fy_rgb + cy_rgb;
     // Reusing U as cloud index
     //U = V*width + U + 0.5;
 
-    float * sz, * sx, * sy, * u_ptr, * v_ptr, * id_ptr;
     float z, u, v;
     int id;
+    
     for(int r=0; r< height; r++){
-        sx = X.ptr<float>(r);
-        sy = Y.ptr<float>(r);
-        sz = Z.ptr<float>(r);
-        u_ptr = U.ptr<float>(r);
-        v_ptr = V.ptr<float>(r);
         for(int c=0; c< width; c++){
-            z = sz[c];
-            u = u_ptr[c];
-            v = v_ptr[c];
+            z = Z.ptr<float>(r)[c];
+            u = U.ptr<float>(r)[c];
+            v = V.ptr<float>(r)[c];
             if(z>z_min && u>0 && v>0 && u<width && v<height){
+                // std::floor(5.88) = 5
                 id = floor(v)*width + u;
-                cloud_array(id,0) = sx[c];
-                cloud_array(id,1) = sy[c];
-                cloud_array(id,2) = z;
+                cloud_array(id,0) = X.ptr<float>(r)[c];
+                cloud_array(id,1) = Y.ptr<float>(r)[c];
+                cloud_array(id,2) = Z.ptr<float>(r)[c];
             }
         }
     }
 }
 
-void organizePointCloudByCell(Eigen::MatrixXf & cloud_in, Eigen::MatrixXf & cloud_out, cv::Mat & cell_map){
+
+void organizePointCloudByCell(const Eigen::MatrixXf & cloud_in, const cv::Mat & cell_map, Eigen::MatrixXf & cloud_out){
 
     int width = cell_map.cols;
     int height = cell_map.rows;
@@ -67,11 +85,10 @@ void organizePointCloudByCell(Eigen::MatrixXf & cloud_in, Eigen::MatrixXf & clou
     int mxn2 = 2*mxn;
 
     int id, it(0);
-    int * cell_map_ptr;
+
     for(int r=0; r< height; r++){
-        cell_map_ptr = cell_map.ptr<int>(r);
         for(int c=0; c< width; c++){
-            id = cell_map_ptr[c];
+            id = cell_map.ptr<int>(r)[c];
             *(cloud_out.data() + id) = *(cloud_in.data() + it);
             *(cloud_out.data() + mxn + id) = *(cloud_in.data() + mxn + it);
             *(cloud_out.data() + mxn2 + id) = *(cloud_in.data() + mxn2 + it);
@@ -80,61 +97,51 @@ void organizePointCloudByCell(Eigen::MatrixXf & cloud_in, Eigen::MatrixXf & clou
     }
 }
 
+
+void read_tum_dataset(const std::string &assocPath, std::vector<std::string> &filesColor, std::vector<std::string> &filesDepth, std::vector<std::string> &time_stamp_depth)
+{
+    std::ifstream assocIn;
+    assocIn.open(assocPath.c_str());
+    std::string line;
+    while (std::getline(assocIn, line))
+    {
+        if (line.empty() || line.compare(0, 1, "#") == 0)
+            continue;
+        std::istringstream iss(line);
+        std::string timestampDepth, timestampColor;
+        std::string fileDepth, fileColor;
+        if (!(iss >> timestampColor >> fileColor >> timestampDepth >> fileDepth))
+            break;
+
+        filesDepth.push_back(fileDepth);
+        filesColor.push_back(fileColor);
+        time_stamp_depth.push_back(timestampDepth);
+    }
+    assocIn.close();
+}
+
+
 int main(int argc, char ** argv){
-
-    string sequence;
-    int PATCH_SIZE = 20;
-
-    // Get intrinsics
-    cv::Mat K_rgb, K_ir, R_stereo, t_stereo;
     // step1: set the dataset path
-    std::string assocPath = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/2/associations.txt";
-    std::string dataset_root = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/2";
+    std::string assocPath = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6/associations.txt";
+    std::string dataset_root = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6";
     
-    // set the intrinsic parameter
-    // set the image width and height
-    int width, height;
-    width = 1280;
-    height = 720;
-    // rgb image intrinsic
-    float fx_rgb = 604.3303833007812;
-    float fy_rgb = 604.4821166992188;
-    float cx_rgb = 638.0137329101562;
-    float cy_rgb = 363.1947937011719;
-
-    // depth image intrinsic
-    float fx_ir = fx_rgb;
-    float fy_ir = fy_rgb;
-    float cx_ir = cx_rgb;
-    float cy_ir = cy_rgb;
-    
-    // set the rotation and translation (transform from pcd to rgb)
-    Eigen::Matrix3d rotation_pcd2rgb;
-    Eigen::Vector3d translation_pcd2rgb;
-    rotation_pcd2rgb<<1, 0, 0, 
-                      0, 1, 0, 
-                      0, 0, 1;
-    translation_pcd2rgb<<0, 0, 0;
-    
-    cv::eigen2cv(rotation_pcd2rgb, R_stereo);
-    cv::eigen2cv(translation_pcd2rgb, t_stereo);
-
-    // Read frame 1 to allocate and get dimension
-    cv::Mat rgb_img, d_img;
-
+    // compute the number of horizontal and vertical cells
     int nr_horizontal_cells = width/PATCH_SIZE;
     int nr_vertical_cells = height/PATCH_SIZE;
 
     // Pre-computations for backprojection
     cv::Mat_<float> X_pre(height, width);
     cv::Mat_<float> Y_pre(height, width);
-    cv::Mat_<float> U(height, width);
-    cv::Mat_<float> V(height, width);
+
+    // backprojection model: x=[(u-cx)/fx] * z
+    // here X_pre is [(u-cx)/fx]. if know depth value at (u_m,v_m), the X coordinate matrix X = X_pre * depth_image.
+    // acclerate the computation
     for (int r = 0;r < height; r ++){
         for (int c = 0;c < width; c ++){
             // Not efficient but at this stage doesn t matter
-            X_pre.at<float>(r,c) = (c-cx_ir)/fx_ir;
-            Y_pre.at<float>(r,c) = (r-cy_ir)/fy_ir;
+            X_pre.at<float>(r,c) = (c-cx_rgb)/fx_rgb;
+            Y_pre.at<float>(r,c) = (r-cy_rgb)/fy_rgb;
         }
     }
 
@@ -142,19 +149,28 @@ int main(int argc, char ** argv){
     cv::Mat_<int> cell_map(height, width);
 
     for (int r=0;r<height; r++){
+        // segment height into cell_r's cell with size PATCH_SIZE
+        // 取整操作
         int cell_r = r/PATCH_SIZE;
+        // remaining block size. because 640%30 may not be a int value.
+        // 取余数操作
         int local_r = r%PATCH_SIZE;
+        
         for (int c=0;c<width; c++){
+            // segment height into cell_r's cell with size PATCH_SIZE
             int cell_c = c/PATCH_SIZE;
             int local_c = c%PATCH_SIZE;
-            cell_map.at<int>(r,c) = (cell_r*nr_horizontal_cells+cell_c)*PATCH_SIZE*PATCH_SIZE + local_r*PATCH_SIZE + local_c;
+
+            // 什么意思 ???? 
+            cell_map.at<int>(r,c) = (cell_r * nr_horizontal_cells + cell_c) * PATCH_SIZE * PATCH_SIZE 
+                                    + local_r*PATCH_SIZE 
+                                    + local_c;
         }
     }
 
     cv::Mat_<float> X(height,width);
     cv::Mat_<float> Y(height,width);
-    cv::Mat_<float> X_t(height,width);
-    cv::Mat_<float> Y_t(height,width);
+
     Eigen::MatrixXf cloud_array(width*height,3);
     Eigen::MatrixXf cloud_array_organized(width*height,3);
 
@@ -183,41 +199,19 @@ int main(int argc, char ** argv){
     // Initialize CAPE
     plane_detector = new CAPE(height, width, PATCH_SIZE, PATCH_SIZE, cylinder_detection, COS_ANGLE_MAX, MAX_MERGE_DIST);
     
-    // step 2: read tum dataset
-    std::vector<std::string> filesDepth;
-    std::vector<std::string> filesColor;
-    std::vector<std::string> time_stamp_depth;
-
-    std::ifstream assocIn;
-    assocIn.open(assocPath.c_str());
-    std::string line;
-    while (std::getline(assocIn, line))
-    {
-        if (line.empty() || line.compare(0, 1, "#") == 0)
-            continue;
-        std::istringstream iss(line);
-        std::string timestampDepth, timestampColor;
-        std::string fileDepth, fileColor;
-        if (!(iss >> timestampColor >> fileColor >> timestampDepth >> fileDepth))
-            break;
-
-        filesDepth.push_back(fileDepth);
-        filesColor.push_back(fileColor);
-        time_stamp_depth.push_back(timestampDepth);
-    }
-    assocIn.close();
-
-
+    // read tum dataset
+    std::vector<std::string> filesDepth, filesColor, time_stamp_depth;
+    read_tum_dataset(assocPath, filesColor, filesDepth, time_stamp_depth);
+    
     // run the cape in tum dataset
-    for(int i = 1; i < filesColor.size(); i++)
+    for(int i = 0; i < filesColor.size(); i++)
     {
         std::string rgb_path = dataset_root + "/" + filesColor[i];
         std::string dep_path = dataset_root + "/" + filesDepth[i];
-        rgb_img = cv::imread(rgb_path, cv::IMREAD_COLOR);
-        d_img = cv::imread(dep_path, cv::IMREAD_ANYDEPTH);
+        cv::Mat rgb_img = cv::imread(rgb_path, cv::IMREAD_COLOR);
+        cv::Mat d_img = cv::imread(dep_path, cv::IMREAD_ANYDEPTH);
 
         d_img.convertTo(d_img, CV_32F);
-        // d_img = d_img/5;
 
         // check the exist of the image
         if ( rgb_img.empty() || d_img.empty() )
@@ -227,15 +221,13 @@ int main(int argc, char ** argv){
         }
         
         // Backproject to point cloud
-        X = X_pre.mul(d_img);
-        Y = Y_pre.mul(d_img);
-        cloud_array.setZero();
-
-        X_t = X;
-        Y_t = Y;
-        d_img = d_img;
-
-        projectPointCloud(X_t, Y_t, d_img, U, V, fx_rgb, fy_rgb, cx_rgb, cy_rgb, t_stereo.at<double>(2), cloud_array);
+        // pcd: (x_i, y_i, z_i), i \in {1,2,...N}
+        X = X_pre.mul(d_img);    // x coordinate of pcd
+        Y = Y_pre.mul(d_img);    // y coordinate of pcd
+        cloud_array.setZero();    // set zero to process next frame
+        
+        // back-project to 3D space and generate cloud_array
+        projectPointCloud(X, Y, d_img, 0, cloud_array);
 
         cv::Mat_<cv::Vec3b> seg_rz = cv::Mat_<cv::Vec3b>(height,width,cv::Vec3b(0,0,0));
         cv::Mat_<uchar> seg_output = cv::Mat_<uchar>(height,width,uchar(0));
@@ -245,11 +237,14 @@ int main(int argc, char ** argv){
         vector<PlaneSeg> plane_params;
         vector<CylinderSeg> cylinder_params;
         double t1 = cv::getTickCount();
-        organizePointCloudByCell(cloud_array, cloud_array_organized, cell_map);
+
+        // ???
+        organizePointCloudByCell(cloud_array, cell_map, cloud_array_organized);
         plane_detector->process(cloud_array_organized, nr_planes, nr_cylinders, seg_output, plane_params, cylinder_params);
+        
         double t2 = cv::getTickCount();
         double time_elapsed = (t2-t1)/(double)cv::getTickFrequency();
-        cout<<"Total time elapsed: "<<time_elapsed<<endl;
+        // cout<<"Total time elapsed: "<<time_elapsed<<endl;
 
         // Map segments with color codes and overlap segmented image w/ RGB
         uchar * sCode;
@@ -292,6 +287,12 @@ int main(int argc, char ** argv){
             }
         }
         cv::imshow("Seg", seg_rz);
+
+        // save the result
+        stringstream ss;
+        ss << setw(5) << setfill('0') << i;
+        std::string img_num = ss.str();
+        cv::imwrite("../results/"+ img_num + ".jpg", seg_rz);
         cv::waitKey(1);
     }
     return 0;
