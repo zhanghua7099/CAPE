@@ -7,29 +7,32 @@ find_package(Eigen3 REQUIRED)
 
 include(GNUInstallDirs)
 
-set (CMAKE_CXX_FLAGS "-O2")
+set(CMAKE_CXX_STANDARD 14)
 
 set(CMAKE_BUILD_TYPE Release)
-
 
 ################################
 ## BUILDING
 
-# library
-add_library(${PROJECT_NAME} SHARED CAPE.cpp PlaneSeg.cpp CylinderSeg.cpp Histogram.cpp)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+file(GLOB_RECURSE cpp_file "src/*.cpp")
+include_directories(
+    ${OpenCV_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
+    ${PROJECT_SOURCE_DIR}/include/
+)
 
-target_include_directories(${PROJECT_NAME} PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/;${OpenCV_INCLUDE_DIRS};${EIGEN3_INCLUDE_DIR}>"
-    "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/${CMAKE_INSTALL_INCLUDEDIR}>/${PROJECT_NAME};${OpenCV_INCLUDE_DIRS};${EIGEN3_INCLUDE_DIR}")
+add_library(${PROJECT_NAME} ${cpp_file})
 
-# demo executable
+target_link_libraries(
+    ${PROJECT_NAME} 
+    ${OpenCV_LIBS}
+)
+
 add_executable(cape_offline run_cape_offline.cpp)
 target_link_libraries(cape_offline ${PROJECT_NAME})
 
 add_executable(pipe_seg pipe_seg.cpp)
 target_link_libraries(pipe_seg ${PROJECT_NAME})
-
 
 ################################
 ## INSTALLATION
