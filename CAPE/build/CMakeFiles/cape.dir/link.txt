@@ -1,2 +1,0 @@
-/usr/bin/ar qc lib/libcape.a CMakeFiles/cape.dir/src/CAPE.cpp.o CMakeFiles/cape.dir/src/CylinderSeg.cpp.o CMakeFiles/cape.dir/src/Histogram.cpp.o CMakeFiles/cape.dir/src/PlaneSeg.cpp.o
-/usr/bin/ranlib lib/libcape.a

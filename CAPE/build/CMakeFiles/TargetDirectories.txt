@@ -1,9 +1,0 @@
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/cape.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/cape_offline.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/pipe_seg.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/edit_cache.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/rebuild_cache.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/list_install_components.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/install.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/install/local.dir
-/home/zhy/CppProject/CAPE/CAPE/build/CMakeFiles/install/strip.dir

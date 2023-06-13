@@ -37,6 +37,10 @@ int height = 720;
 // set the patch size
 int PATCH_SIZE = 20;
 
+// compute the number of horizontal and vertical cells
+int nr_horizontal_cells = width/PATCH_SIZE;
+int nr_vertical_cells = height/PATCH_SIZE;
+
 
 void projectPointCloud(const cv::Mat & X, const cv::Mat & Y, const cv::Mat & Z, const double &z_min, Eigen::MatrixXf & cloud_array){
     // X: x coordinate of pcd
@@ -51,7 +55,8 @@ void projectPointCloud(const cv::Mat & X, const cv::Mat & Y, const cv::Mat & Z, 
     cv::divide(X,Z,U,1);    // U=X*1/Z
     cv::divide(Y,Z,V,1);    // V=Y*1/Z (Performs per-element division of two arrays or a scalar by an array.)
 
-    // project to image plane according to the point
+    // project the pcd to image plane
+    // because the same position may not have depth value
     U = U * fx_rgb + cx_rgb;
     V = V * fy_rgb + cy_rgb;
     // Reusing U as cloud index
@@ -121,14 +126,38 @@ void read_tum_dataset(const std::string &assocPath, std::vector<std::string> &fi
 }
 
 
+void gen_random_color()
+{
+    // For visualize the final results
+    for(int i=0; i<100;i++){
+        cv::Vec3b color;
+        color[0]=rand()%255;
+        color[1]=rand()%255;
+        color[2]=rand()%255;
+        color_code.push_back(color);
+    }
+
+    // Add specific colors for planes
+    color_code[0][0] = 0; color_code[0][1] = 0; color_code[0][2] = 255;
+    color_code[1][0] = 255; color_code[1][1] = 0; color_code[1][2] = 204;
+    color_code[2][0] = 255; color_code[2][1] = 100; color_code[2][2] = 0;
+    color_code[3][0] = 0; color_code[3][1] = 153; color_code[3][2] = 255;
+    // Add specific colors for cylinders
+    color_code[50][0] = 178; color_code[50][1] = 255; color_code[50][2] = 0;
+    color_code[51][0] = 255; color_code[51][1] = 0; color_code[51][2] = 51;
+    color_code[52][0] = 0; color_code[52][1] = 255; color_code[52][2] = 51;
+    color_code[53][0] = 153; color_code[53][1] = 0; color_code[53][2] = 255;
+}
+
+
 int main(int argc, char ** argv){
-    // step1: set the dataset path
+    // step 1: set the tum dataset path
     std::string assocPath = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6/associations.txt";
     std::string dataset_root = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6";
     
-    // compute the number of horizontal and vertical cells
-    int nr_horizontal_cells = width/PATCH_SIZE;
-    int nr_vertical_cells = height/PATCH_SIZE;
+    // step 2: read the tum dataset
+    std::vector<std::string> filesDepth, filesColor, time_stamp_depth;
+    read_tum_dataset(assocPath, filesColor, filesDepth, time_stamp_depth);
 
     // Pre-computations for backprojection
     cv::Mat_<float> X_pre(height, width);
@@ -174,35 +203,16 @@ int main(int argc, char ** argv){
     Eigen::MatrixXf cloud_array(width*height,3);
     Eigen::MatrixXf cloud_array_organized(width*height,3);
 
-    cv::namedWindow("Seg");
 
     // Populate with random color codes
-    for(int i=0; i<100;i++){
-        cv::Vec3b color;
-        color[0]=rand()%255;
-        color[1]=rand()%255;
-        color[2]=rand()%255;
-        color_code.push_back(color);
-    }
-
-    // Add specific colors for planes
-    color_code[0][0] = 0; color_code[0][1] = 0; color_code[0][2] = 255;
-    color_code[1][0] = 255; color_code[1][1] = 0; color_code[1][2] = 204;
-    color_code[2][0] = 255; color_code[2][1] = 100; color_code[2][2] = 0;
-    color_code[3][0] = 0; color_code[3][1] = 153; color_code[3][2] = 255;
-    // Add specific colors for cylinders
-    color_code[50][0] = 178; color_code[50][1] = 255; color_code[50][2] = 0;
-    color_code[51][0] = 255; color_code[51][1] = 0; color_code[51][2] = 51;
-    color_code[52][0] = 0; color_code[52][1] = 255; color_code[52][2] = 51;
-    color_code[53][0] = 153; color_code[53][1] = 0; color_code[53][2] = 255;
+    gen_random_color();
 
     // Initialize CAPE
     plane_detector = new CAPE(height, width, PATCH_SIZE, PATCH_SIZE, cylinder_detection, COS_ANGLE_MAX, MAX_MERGE_DIST);
     
-    // read tum dataset
-    std::vector<std::string> filesDepth, filesColor, time_stamp_depth;
-    read_tum_dataset(assocPath, filesColor, filesDepth, time_stamp_depth);
-    
+    // visualize the results
+    cv::namedWindow("Seg");
+
     // run the cape in tum dataset
     for(int i = 0; i < filesColor.size(); i++)
     {
