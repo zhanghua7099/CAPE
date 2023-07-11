@@ -35,9 +35,12 @@ int width = 1280;
 int height = 720;
 
 // set the patch size
+// 设置每个网格的大小是多少
+// 这里网格被设置成 20 pixel * 20 pixel
 int PATCH_SIZE = 20;
 
 // compute the number of horizontal and vertical cells
+// 提前计算行和列共有几个网格
 int nr_horizontal_cells = width/PATCH_SIZE;
 int nr_vertical_cells = height/PATCH_SIZE;
 
@@ -46,33 +49,31 @@ void projectPointCloud(const cv::Mat & X, const cv::Mat & Y, const cv::Mat & Z, 
     // X: x coordinate of pcd
     // Y: y coordinate of pcd
     // Z: z coordinate of pcd
+    
     // organize as a image, each pixel has a value
     int width = X.cols;
     int height = X.rows;
     
-    cv::Mat U, V;
-    // Project to image coordinates
-    cv::divide(X,Z,U,1);    // U=X*1/Z
-    cv::divide(Y,Z,V,1);    // V=Y*1/Z (Performs per-element division of two arrays or a scalar by an array.)
-
-    // project the pcd to image plane
-    // because the same position may not have depth value
-    U = U * fx_rgb + cx_rgb;
-    V = V * fy_rgb + cy_rgb;
-    // Reusing U as cloud index
-    //U = V*width + U + 0.5;
-
-    float z, u, v;
+    float z;
     int id;
-    
+
     for(int r=0; r< height; r++){
         for(int c=0; c< width; c++){
             z = Z.ptr<float>(r)[c];
-            u = U.ptr<float>(r)[c];
-            v = V.ptr<float>(r)[c];
-            if(z>z_min && u>0 && v>0 && u<width && v<height){
-                // std::floor(5.88) = 5
-                id = floor(v)*width + u;
+            
+            // set the min value of z
+            if(z > z_min){
+                // 二维图像矩阵展开为一维矩阵得到id。沿着行方向，从上到下依次堆叠
+                // 例子：坐标记为(行索引c, 列索引r)对应u,v两个方向
+                // [[1, 3, 4, 2],
+                //  [6, 5, 8, 7],
+                //  [11, 9, 10, 12]]        // 该矩阵为3行4列
+                // 按照行展开为一维r * width + c
+                // =>
+                // [1, 3, 4, 2, 6, 5, 8, 7, 11, 9, 10, 12]
+                // 此时二维图像矩阵中的元素6的坐标为(0, 1)。变为一维矩阵后元素6的坐标为(4)。这里相当于1×4+0=4
+
+                id = r * width + c;
                 cloud_array(id,0) = X.ptr<float>(r)[c];
                 cloud_array(id,1) = Y.ptr<float>(r)[c];
                 cloud_array(id,2) = Z.ptr<float>(r)[c];
@@ -86,18 +87,40 @@ void organizePointCloudByCell(const Eigen::MatrixXf & cloud_in, const cv::Mat & 
 
     int width = cell_map.cols;
     int height = cell_map.rows;
-    int mxn = width*height;
-    int mxn2 = 2*mxn;
+    int mxn = width * height;
+    int mxn2 = 2 * mxn;
 
-    int id, it(0);
+    int id;
+    int it = 0;
 
+    /***
+    // Eigen例子矩阵赋值的例子
+    Eigen::MatrixXf test_A(4,5); // 4行5列
+    // // 赋值按顺序为行优先
+    test_A << 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20;
+    // std::cout<<test_A<<std::endl
+    // 此时输出test_A为：
+    // 1  2  3  4  5
+    // 6  7  8  9 10
+    // 11 12 13 14 15
+    // 16 17 18 19 20
+
+    // 通过(行，列)方式，访问时元素2为test_A(0, 1)
+
+    // std::cout<<test_A<<std::endl;
+    // 直接访问时，test_A(0)为1, test_A(1)为6
+    // 按照列优先的规则
+    // std::cout<<test_A(0)<<", "<<test_A(1)<<std::endl;
+    ***/
+
+   // 点云重新排序，使得能够通过网格的索引访问网格中的点
     for(int r=0; r< height; r++){
         for(int c=0; c< width; c++){
             id = cell_map.ptr<int>(r)[c];
-            *(cloud_out.data() + id) = *(cloud_in.data() + it);
-            *(cloud_out.data() + mxn + id) = *(cloud_in.data() + mxn + it);
-            *(cloud_out.data() + mxn2 + id) = *(cloud_in.data() + mxn2 + it);
-            it++;
+            cloud_out(id) = cloud_in(it);
+            cloud_out(mxn + id) = cloud_in(mxn + it);
+            cloud_out(mxn2 + id) = cloud_in(mxn2 + it);
+            ++it;
         }
     }
 }
@@ -212,7 +235,8 @@ int main(int argc, char ** argv){
     // Populate with random color codes
     gen_random_color();
 
-    // Initialize CAPE
+    // Initialize CAPE 
+    // set the parameter
     plane_detector = new CAPE(height, width, PATCH_SIZE, PATCH_SIZE, cylinder_detection, COS_ANGLE_MAX, MAX_MERGE_DIST);
     
     // visualize the results

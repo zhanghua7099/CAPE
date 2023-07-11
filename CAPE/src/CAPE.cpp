@@ -9,9 +9,13 @@ CAPE::CAPE(int depth_height, int depth_width, int cell_width, int cell_height, b
 {
 	this->depth_height = depth_height;
 	this->depth_width = depth_width;
-	this->cell_width = cell_width;
-	this->cell_height = cell_height;
+	this->cell_width = cell_width;    // patch的大小
+	this->cell_height = cell_height;    // patch的大小
+
+	// 设置是否合并平面的阈值
+	// 设置距离d的阈值
 	this->max_merge_dist = max_merge_dist;
+	// 设置平面法线夹角的阈值
 	this->min_cos_angle_4_merge = min_cos_angle_4_merge;
 	this->cylinder_detection = cylinder_detection;
 
@@ -46,17 +50,27 @@ CAPE::CAPE(int depth_height, int depth_width, int cell_width, int cell_height, b
 
 void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & nr_cylinders_final,  cv::Mat & seg_out, vector<PlaneSeg> & plane_segments_final, vector<CylinderSeg> & cylinder_segments_final)
 {
-
+	// 行方向的网格数，网格分辨率默认为20×20
 	int nr_horizontal_cells = depth_width/cell_width;
+
+	// 列方向的网格数
 	int nr_vertical_cells = depth_height/cell_height;
+
+	// 网格的总数
 	int nr_total_cells = nr_vertical_cells*nr_horizontal_cells;
+	
+	// 网格中像素点的总数
 	int nr_pts_per_cell = cell_width*cell_height;
+
+	// ?圆柱参数？
 	int cylinder_code_offset = 50;
 
 	grid_plane_seg_map = 0;
 	grid_plane_seg_map_eroded = 0;
 	grid_cylinder_seg_map = 0;
 	grid_cylinder_seg_map_eroded = 0;
+
+	// ??
 	std::memset(seg_map_stacked, (uchar)0, depth_height*depth_width*sizeof(unsigned char));
 	std::memset(distances_stacked, 100, depth_height*depth_width*sizeof(float)); /* = to really high float*/
 
@@ -67,7 +81,7 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 	float sin_cos_angle_4_merge = sqrt(1-pow(min_cos_angle_4_merge,2));
 	for (int cell_r=0; cell_r<nr_vertical_cells; cell_r++){
 		for (int cell_c=0; cell_c<nr_horizontal_cells; cell_c++){
-			Grid[stacked_cell_id] = new PlaneSeg(cloud_array, stacked_cell_id, nr_pts_per_cell,cell_width);
+			Grid[stacked_cell_id] = new PlaneSeg(cloud_array, stacked_cell_id, nr_pts_per_cell, cell_width);
 			if (Grid[stacked_cell_id]->planar){
 				cell_diameter = (cloud_array.block(stacked_cell_id*nr_pts_per_cell+nr_pts_per_cell-1,0,1,3)-cloud_array.block(stacked_cell_id*nr_pts_per_cell,0,1,3)).norm();
 				// Add truncated distance

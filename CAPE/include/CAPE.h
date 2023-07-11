@@ -18,7 +18,10 @@ typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic>  MatrixXb;
 class CAPE
 {
 private:
+	// 单元格的宽度大小 (pixel)
 	int cell_width;
+
+	// 单元格的高度大小 (pixel)
 	int cell_height;
 	int depth_height;
 	int depth_width;
