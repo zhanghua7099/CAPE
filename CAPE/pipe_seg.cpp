@@ -163,9 +163,9 @@ int main(int argc, char ** argv){
     cv::Mat_<float> X_pre(height, width);
     cv::Mat_<float> Y_pre(height, width);
 
-    // backprojection model: x=[(u-cx)/fx] * z
-    // here X_pre is [(u-cx)/fx]. if know depth value at (u_m,v_m), the X coordinate matrix X = X_pre * depth_image.
-    // acclerate the computation
+    // Backprojection model: x=[(u-cx)/fx] * z
+    // Here, X_pre is [(u-cx)/fx]. if know depth value at (u_m,v_m), the X coordinate matrix X = X_pre * depth_image.
+    // To acclerate the computation
     for (int r = 0;r < height; r ++){
         for (int c = 0;c < width; c ++){
             // Not efficient but at this stage doesn t matter
@@ -175,6 +175,8 @@ int main(int argc, char ** argv){
     }
 
     // Pre-computations for maping an image point cloud to a cache-friendly array where cell's local point clouds are contiguous
+    // 把图像划分成PATCH_SIZE * PATCH_SIZE个网格。
+    // 这里相当于为每个图像点赋予一个索引，通过这个索引能够查找到这个图像点在哪个网格里。
     cv::Mat_<int> cell_map(height, width);
 
     for (int r=0;r<height; r++){
@@ -191,9 +193,12 @@ int main(int argc, char ** argv){
             int local_c = c%PATCH_SIZE;
 
             // 什么意思 ???? 
+            // r: 图像高索引，c图像宽索引
             cell_map.at<int>(r,c) = (cell_r * nr_horizontal_cells + cell_c) * PATCH_SIZE * PATCH_SIZE 
                                     + local_r*PATCH_SIZE 
                                     + local_c;
+            
+            // std::cout<<cell_map.at<int>(r,c)<<std::endl;
         }
     }
 
@@ -285,7 +290,7 @@ int main(int argc, char ** argv){
         std::stringstream fps;
         fps<<(int)(1/time_elapsed+0.5)<<" fps";
         cv::putText(seg_rz, fps.str(), cv::Point(15,15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,1));
-        cout<<"Nr cylinders:"<<nr_cylinders<<endl;
+        // cout<<"Nr cylinders:"<<nr_cylinders<<endl;
         int cylinder_code_offset = 50;
         // show cylinder labels
         if (nr_cylinders>0){
@@ -302,7 +307,7 @@ int main(int argc, char ** argv){
         stringstream ss;
         ss << setw(5) << setfill('0') << i;
         std::string img_num = ss.str();
-        cv::imwrite("../results/"+ img_num + ".jpg", seg_rz);
+        // cv::imwrite("../results/"+ img_num + ".jpg", seg_rz);
         cv::waitKey(1);
     }
     return 0;
