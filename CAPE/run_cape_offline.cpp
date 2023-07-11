@@ -282,7 +282,18 @@ int main(int argc, char ** argv){
             cout<<"radius: "<<cylinder_params[c_id].radii[0]<<endl;
         }
         */
-
+        for(int p_id=0; p_id<nr_planes;p_id++){
+            cout<<"[Plane #"<<p_id<<"] with ";
+            cout<<"normal: ("<<plane_params[p_id].normal[0]<<" "<<plane_params[p_id].normal[1]<<" "<<plane_params[p_id].normal[2]<<"), ";
+            cout<<"d: "<<plane_params[p_id].d<<endl;
+        }
+        for(int c_id=0; c_id<nr_cylinders;c_id++){
+            cout<<"[Cylinder #"<<c_id<<"] with ";
+            cout<<"axis: ("<<cylinder_params[c_id].axis[0]<<" "<<cylinder_params[c_id].axis[1]<<" "<<cylinder_params[c_id].axis[2]<<"), ";
+            cout<<"center: ("<<cylinder_params[c_id].centers[0].transpose()<<"), ";
+            cout<<"radius: "<<cylinder_params[c_id].radii[0]<<endl;
+        }
+        
         // Map segments with color codes and overlap segmented image w/ RGB
         uchar * sCode;
         uchar * dColor;
