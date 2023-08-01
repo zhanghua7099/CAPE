@@ -17,6 +17,8 @@ CAPE::CAPE(int depth_height, int depth_width, int cell_width, int cell_height, b
 	this->max_merge_dist = max_merge_dist;
 	// 设置平面法线夹角的阈值
 	this->min_cos_angle_4_merge = min_cos_angle_4_merge;
+
+	// 是否检查圆柱体
 	this->cylinder_detection = cylinder_detection;
 
 	int nr_horizontal_cells = depth_width/cell_width;
@@ -26,7 +28,11 @@ CAPE::CAPE(int depth_height, int depth_width, int cell_width, int cell_height, b
 	grid_cylinder_seg_map = cv::Mat_<int>(nr_vertical_cells,nr_horizontal_cells,0);
 	grid_cylinder_seg_map_eroded = cv::Mat_<uchar>(nr_vertical_cells,nr_horizontal_cells,uchar(0));
 	mask = cv::Mat(nr_vertical_cells,nr_horizontal_cells,CV_8U);
+
+	// 腐蚀操作的结果
 	mask_eroded = cv::Mat(nr_vertical_cells,nr_horizontal_cells,CV_8U);
+
+	// 膨胀操作的结果
 	mask_dilated = cv::Mat(nr_vertical_cells,nr_horizontal_cells,CV_8U);
 	mask_diff = cv::Mat(nr_vertical_cells,nr_horizontal_cells,CV_8U);
 	
@@ -62,7 +68,7 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 	// 网格中像素点的总数
 	int nr_pts_per_cell = cell_width*cell_height;
 
-	// ?圆柱参数？
+	// ?圆柱参数？ offset偏离距离
 	int cylinder_code_offset = 50;
 
 	grid_plane_seg_map = 0;
@@ -82,7 +88,8 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 	for (int cell_r=0; cell_r<nr_vertical_cells; cell_r++){
 		for (int cell_c=0; cell_c<nr_horizontal_cells; cell_c++){
 			Grid[stacked_cell_id] = new PlaneSeg(cloud_array, stacked_cell_id, nr_pts_per_cell, cell_width);
-			if (Grid[stacked_cell_id]->planar){
+			if (Grid[stacked_cell_id]->planar)    // 判断当前的grid是否是平面，是则存起来
+			{
 				cell_diameter = (cloud_array.block(stacked_cell_id*nr_pts_per_cell+nr_pts_per_cell-1,0,1,3)-cloud_array.block(stacked_cell_id*nr_pts_per_cell,0,1,3)).norm();
 				// Add truncated distance
 				cell_distance_tols[stacked_cell_id]=pow(min(max(cell_diameter*sin_cos_angle_4_merge,20.0f),max_merge_dist),2);
@@ -113,18 +120,19 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 		}
 	}
 	Histogram H(20);
-	H.initHistogram(C,planar_flags);
+	H.initHistogram(C, planar_flags);
 
 	// Initialization for cell-wise region growing and model fitting
-	vector<PlaneSeg> plane_segments;
-	vector<CylinderSeg> cylinder_segments;
+	std::vector<PlaneSeg> plane_segments;
+	std::vector<CylinderSeg> cylinder_segments;
 	bool stop = false;
 	int nr_cylinders = 0;
-	vector<pair<int,int> > cylinder2region_map;
+	std::vector<std::pair<int,int> > cylinder2region_map;
 
 	for (int cell_id=0; cell_id<nr_total_cells; cell_id++){
 		unassigned_mask[cell_id] = planar_flags[cell_id];
 	}
+
 	/*------------ Cell-wise region growing with embedded model fitting ---------------------*/
 	while(nr_remaining_planar_cells>0){  
 		// 1. Seeding
@@ -175,7 +183,8 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 		new_ps.fitPlane();
 
 		// 4. Model fitting
-		if(new_ps.score>100){
+		if(new_ps.score > 100)    // 平面分数高于100则认为是一个平面
+		{
 			// It is a plane
 			plane_segments.push_back(new_ps);
 			int nr_curr_planes = plane_segments.size();
@@ -191,7 +200,9 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 					i++;
 				}
 			}
-		}else{
+		}
+		else    // 平面分数低于100则认为是一个圆柱体
+		{
 			if(cylinder_detection && nr_cells_activated>5){
                 // It is an extrusion
 				CylinderSeg cy(Grid, activation_map, nr_cells_activated);
@@ -206,7 +217,8 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 					}
 					new_ps.fitPlane();
 					// Model selection based on MSE
-					if(new_ps.MSE<cy.MSEs[seg_id]){
+					if(new_ps.MSE<cy.MSEs[seg_id])
+					{
 						plane_segments.push_back(new_ps);
 						int nr_curr_planes = plane_segments.size();
 						for(int c=0; c<nr_cells_activated; c++){
@@ -216,7 +228,9 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 							}
 						}
 						cy.cylindrical_mask[seg_id] = false;
-					}else{
+					}
+					else
+					{
 						nr_cylinders++;
 						cylinder2region_map.push_back(make_pair(cylinder_segments.size()-1,seg_id));
 						for(int c=0; c<nr_cells_activated; c++){
@@ -282,7 +296,7 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 		}
 
 		// Erode with cross to obtain borders and check support
-		cv::erode(mask,mask_eroded,mask_cross_kernel);
+		cv::erode(mask, mask_eroded, mask_cross_kernel);
 		double min, max;
 		cv::minMaxLoc(mask_eroded, &min, &max);
 
@@ -294,8 +308,10 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
         plane_segments_final.push_back(plane_segments[i]);
 
 		// Dilate to obtain borders
-		cv::dilate(mask,mask_dilated,mask_square_kernel);
-		mask_diff = mask_dilated-mask_eroded;
+		cv::dilate(mask, mask_dilated, mask_square_kernel);
+		
+		// 边界提取操作
+		mask_diff = mask_dilated - mask_eroded;
 
 		int stacked_cell_id = 0;
         uchar plane_nr = (unsigned char)plane_segments_final.size();
@@ -351,7 +367,7 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 			mask.setTo(1, grid_cylinder_seg_map==cylinder_nr);
 
 			// Erode to obtain borders
-			cv::erode(mask,mask_eroded,mask_cross_kernel);
+			cv::erode(mask, mask_eroded, mask_cross_kernel);
 			double min, max;
 			cv::minMaxLoc(mask_eroded, &min, &max);
 
@@ -419,17 +435,22 @@ void CAPE::process(Eigen::MatrixXf & cloud_array, int & nr_planes_final, int & n
 		int r_offset = cell_r*cell_height;
 		int r_limit = r_offset+cell_height;
 		for (int cell_c=0; cell_c<nr_horizontal_cells; cell_c++){
-			int c_offset = cell_c*cell_width;
-			int c_limit = c_offset+cell_width;
+			int c_offset = cell_c * cell_width;
+			int c_limit = c_offset + cell_width;
 
-			if (grid_plane_eroded_row_ptr[cell_c]>0){
+			// 先判断网格，随后判断像素
+			if (grid_plane_eroded_row_ptr[cell_c]>0)    // 是平面，则直接用矩形填充编号grid_plane_eroded_row_ptr[cell_c]
+			{
 				// Set rectangle equal to assigned cell
 				seg_out(cv::Rect(c_offset,r_offset,cell_width,cell_height)).setTo(grid_plane_eroded_row_ptr[cell_c]);
-			}else{
+			}
+			else    // 不是平面，再检查是否有圆柱体
+			{
 				if(grid_cylinder_eroded_row_ptr[cell_c]>0){
 					// Set rectangle equal to assigned cell
 					seg_out(cv::Rect(c_offset,r_offset,cell_width,cell_height)).setTo(grid_cylinder_eroded_row_ptr[cell_c]);
-				}else{
+				}
+				else{
 					// Set cell pixels one by one
 					stack_ptr = &seg_map_stacked[nr_pts_per_cell*cell_r*nr_horizontal_cells+nr_pts_per_cell*cell_c];
 					for(int r=r_offset;r<r_limit;r++){

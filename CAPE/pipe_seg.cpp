@@ -175,8 +175,8 @@ void gen_random_color()
 
 int main(int argc, char ** argv){
     // step 1: set the tum dataset path
-    std::string assocPath = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6/associations.txt";
-    std::string dataset_root = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/6";
+    std::string assocPath = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/2/associations.txt";
+    std::string dataset_root = "/home/zhy/windows_disk/datasets/pipeline_light_datasets_0315/2";
     
     // step 2: read the tum dataset
     std::vector<std::string> filesDepth, filesColor, time_stamp_depth;
@@ -200,6 +200,7 @@ int main(int argc, char ** argv){
     // Pre-computations for maping an image point cloud to a cache-friendly array where cell's local point clouds are contiguous
     // 把图像划分成PATCH_SIZE * PATCH_SIZE个网格。
     // 这里相当于为每个图像点赋予一个索引，通过这个索引能够查找到这个图像点在哪个网格里。
+    // https://docs.google.com/presentation/d/1pDBFnKQFdA5gfWn4-5GcR550fLoROAN73H6BxXsKF-Y/edit?usp=sharing
     cv::Mat_<int> cell_map(height, width);
 
     for (int r=0;r<height; r++){
@@ -267,8 +268,11 @@ int main(int argc, char ** argv){
         
         // back-project to 3D space and generate cloud_array
         projectPointCloud(X, Y, d_img, 0, cloud_array);
-
+        
+        // 可视化结果
         cv::Mat_<cv::Vec3b> seg_rz = cv::Mat_<cv::Vec3b>(height,width,cv::Vec3b(0,0,0));
+        
+        // 分割结果
         cv::Mat_<uchar> seg_output = cv::Mat_<uchar>(height,width,uchar(0));
 
         // Run CAPE
@@ -277,39 +281,50 @@ int main(int argc, char ** argv){
         vector<CylinderSeg> cylinder_params;
         double t1 = cv::getTickCount();
 
-        // ???
+        // 重新组织pcd，使其含有cell索引信息。传入CAPE处理
         organizePointCloudByCell(cloud_array, cell_map, cloud_array_organized);
+
+        //
+        // Input: cloud_array_organized
+        // Output: 
+        // * nr_planes: 平面的数量 
+        // * nr_cylinders: 圆柱的数量
+        // * seg_output: 
+        // * plane_params: 平面参数
+        // * cylinder_params: 圆柱参数
+
         plane_detector->process(cloud_array_organized, nr_planes, nr_cylinders, seg_output, plane_params, cylinder_params);
-        
+        // std::cout<<seg_output.size()<<std::endl;
+
         double t2 = cv::getTickCount();
         double time_elapsed = (t2-t1)/(double)cv::getTickFrequency();
         // cout<<"Total time elapsed: "<<time_elapsed<<endl;
 
         // Map segments with color codes and overlap segmented image w/ RGB
-        uchar * sCode;
-        uchar * dColor;
-        uchar * srgb;
+
+        // 慢速访问，易于理解
+        // 像素遍历速度参考：https://www.jianshu.com/p/c65de9fa82f5
         int code;
         for(int r=0; r<  height; r++){
-            dColor = seg_rz.ptr<uchar>(r);
-            sCode = seg_output.ptr<uchar>(r);
-            srgb = rgb_img.ptr<uchar>(r);
             for(int c=0; c< width; c++){
-                code = *sCode;
-                if (code>0){
-                    dColor[c*3] =   color_code[code-1][0]/2 + srgb[0]/2;
-                    dColor[c*3+1] = color_code[code-1][1]/2 + srgb[1]/2;
-                    dColor[c*3+2] = color_code[code-1][2]/2 + srgb[2]/2;;
+                code = seg_output.ptr<uchar>(r)[c];
+                if (code>0)
+                {
+                    // 有平面/圆柱。此时显示为：标签颜色/2 + 原始rgb值/2
+                    seg_rz.at<cv::Vec3b>(r, c)[0] =   color_code[code-1][0]/2 + rgb_img.at<cv::Vec3b>(r, c)[0]/2;
+                    seg_rz.at<cv::Vec3b>(r, c)[1] = color_code[code-1][1]/2 + rgb_img.at<cv::Vec3b>(r, c)[1]/2;
+                    seg_rz.at<cv::Vec3b>(r, c)[2] = color_code[code-1][2]/2 + rgb_img.at<cv::Vec3b>(r, c)[2]/2;;
                 }else{
-                    dColor[c*3] =  srgb[0];
-                    dColor[c*3+1] = srgb[1];
-                    dColor[c*3+2] = srgb[2];
+                    // 无平面/圆柱。直接显示rgb值
+                    seg_rz.at<cv::Vec3b>(r, c)[0] =  rgb_img.at<cv::Vec3b>(r, c)[0];
+                    seg_rz.at<cv::Vec3b>(r, c)[1] = rgb_img.at<cv::Vec3b>(r, c)[1];
+                    seg_rz.at<cv::Vec3b>(r, c)[2] = rgb_img.at<cv::Vec3b>(r, c)[2];
                 }
-                sCode++; srgb++; srgb++; srgb++;
             }
         }
 
         // Show frame rate and labels
+        // 显示标签和帧率
         cv::rectangle(seg_rz,  cv::Point(0,0),cv::Point(width,20), cv::Scalar(0,0,0),-1);
         std::stringstream fps;
         fps<<(int)(1/time_elapsed+0.5)<<" fps";
@@ -322,15 +337,24 @@ int main(int argc, char ** argv){
             text<<"Cylinders:";
             cv::putText(seg_rz, text.str(), cv::Point(width/2,15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,1));
             for(int j=0;j<nr_cylinders;j++){
-                cv::rectangle(seg_rz,  cv::Point(width/2 + 80+15*j,6),cv::Point(width/2 + 90+15*j,16), cv::Scalar(color_code[cylinder_code_offset+j][0],color_code[cylinder_code_offset+j][1],color_code[cylinder_code_offset+j][2]),-1);
+                cv::rectangle(seg_rz,  cv::Point(width/2 + 80+15*j,6), cv::Point(width/2 + 90+15*j,16), cv::Scalar(color_code[cylinder_code_offset+j][0],color_code[cylinder_code_offset+j][1],color_code[cylinder_code_offset+j][2]),-1);
             }
         }
+
         cv::imshow("Seg", seg_rz);
 
+        // double minValue, maxValue;
+        // cv::Point  minIdx, maxIdx;    // 最小值坐标，最大值坐标     
+        // cv::minMaxLoc(seg_output, &minValue, &maxValue, &minIdx, &maxIdx);
+        // std::cout << "最大值：" << maxValue <<"最小值："<<minValue<<std::endl;
+
+        // seg_output = seg_output/maxValue * 255;
+        // cv::imshow("s", seg_output);
+
         // save the result
-        stringstream ss;
-        ss << setw(5) << setfill('0') << i;
-        std::string img_num = ss.str();
+        // stringstream ss;
+        // ss << setw(5) << setfill('0') << i;
+        // std::string img_num = ss.str();
         // cv::imwrite("../results/"+ img_num + ".jpg", seg_rz);
         cv::waitKey(1);
     }
